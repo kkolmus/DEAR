@@ -56,21 +56,25 @@ ui <- fluidPage(
                    value = -0.6,
                    step = 0.1),
       
-      selectInput(inputId = "pval",
-                  label = "p-value:",
-                  choices = c(0.05, 0.01, 0.001, 0.0001)),
+      # selectInput(inputId = "pval",
+      #             label = "p-value:",
+      #             choices = c(0.05, 0.01, 0.001, 0.0001),
+      #             selected = 0.05),
       
+      numericInput(inputId = "pval",
+                  label = "p-value:",
+                  value = 0.05),
+
       # Horizontal line ----
       tags$hr(),
       
       # Input: Select number of rows to display ----
       radioButtons(inputId = "disp", 
                    label = "Arrange data based on:",
-                   choices = c(`Descending p-value` = "desc.pvalue",
-                               `Ascending p-value` = "pvalue",
+                   choices = c(`p-value` = "pvalue",
                                `Descending fold change` = "desc.fc",
                                `Ascending fold change` = "fc"),
-                   selected = "desc.pvalue"),
+                   selected = "pvalue"),
       
       # Horizontal line ----
       tags$hr()
@@ -119,7 +123,7 @@ server <- function(input, output, session) {
     updateSelectInput(session, "GeneID", "Choose the column with gene id:", choices = vars1)
     updateSelectInput(session, "FoldChange", "Choose the column with fold change values:", choices = vars2)
     updateSelectInput(session, "p.value", "Choose the column with p-value values:", choices = vars3)
-  
+    
     df
     
   })
@@ -130,12 +134,30 @@ server <- function(input, output, session) {
     
     df <- select(df, input$GeneID, input$FoldChange, input$p.value)
     
+    # check if there is need to convert fold change data
+    
+    log_name <- paste0('logarithm(', input$FoldChange, ')')
+    
+    checkup <- apply(df, 1, function(row) any(row < 0))
+    is.negative <- length(which(checkup))
+    
+    if (is.negative > 0 ) {
+      df
+    } else {
+      return(df %>% 
+               dplyr::transmute(!!log_name := log2(df[, input$FoldChange])))
+    }
+    
+    df$Threshold <- ifelse(test = df[ ,input$FoldChange] >= input$UP & 
+                             df[ ,input$p.value] < input$pval, 
+                           yes = "Upregulated", 
+                           ifelse(df[ ,input$FoldChange] <= input$DOWN & 
+                                    df[ ,input$p.value] < input$pval,
+                                  yes = "Downregulated", no = "Not significant"))
+    
     # try isolate number of observations to show
     
-    if (input$disp == "desc.pvalue") {
-      return(df %>% 
-               dplyr::arrange(dplyr::desc(!!rlang::sym(input$p.value))))
-    } else if (input$disp == "pvalue") {
+    if (input$disp == "pvalue") {
       return(df %>% 
                dplyr::arrange(!!rlang::sym(input$p.value)))
     } else if (input$disp == "desc.fc") {
@@ -146,7 +168,7 @@ server <- function(input, output, session) {
                dplyr::arrange(!!rlang::sym(input$FoldChange)))
     }
     
-  }, digits = 5)
+  }, digits = 7)
   
   output$volcano_plot <- renderPlot({
     
@@ -155,29 +177,33 @@ server <- function(input, output, session) {
     df <- select(df, input$GeneID, input$FoldChange, input$p.value)
     
     # PROBLEM WITH IFELSE CLASSIFICATION
-    df$Threshold <- ifelse((df[ ,input$FoldChange] >= input$UP & df[ ,input$p.value] < input$pval), 
-                           "Upregulated", 
-                           ifelse((df[ ,input$FoldChange] <= input$DOWN & df[ ,input$p.value] < input$pval), 
-                                  "Downregulated", "Not significant"))
+    df$Threshold <- ifelse(test = df[ ,input$FoldChange] >= input$UP & 
+                             df[ ,input$p.value] < input$pval, 
+                           yes = "Upregulated", 
+                           ifelse(df[ ,input$FoldChange] <= input$DOWN & 
+                                    df[ ,input$p.value] < input$pval,
+                                  yes = "Downregulated", no = "Not significant"))
     
     vp <- ggplot(data = df,
-                 mapping = aes(x = df[,input$FoldChange],
-                               y = -log10(df[,input$p.value]),
-                               color = df$Threshold)) +
+                 mapping = aes_string(x = df[,input$FoldChange],
+                                      y = -log10(df[,input$p.value]),
+                                      color = "Threshold")) +
       geom_point(alpha = 0.3, size = 1) +
       scale_color_manual(values = c("dodgerblue", "gold", "deeppink2")) +
+      ggtitle(paste0("Volcano plot showing \n ", input$FoldChange, " and ", input$p.value)) +
       labs(color = "Expression pattern") +
       xlab("log2FC") +
       ylab("-log10(p-value)") +
       theme_bw() +
-      theme(plot.title = element_text(hjust = 0.5),
-            text = element_text(size = 14),
-            legend.text = element_text(size = 14),
-            legend.position = "bottom",
-            axis.text.x = element_text(angle = 0, hjust = 1, size = 14),
-            axis.text.y = element_text(angle = 0, hjust = 1, size = 14))
+      theme(axis.text = element_text(size = 14, face = "bold", color = "black"),
+            axis.title = element_text(size = 14, face = "bold", color = "black"), 
+            plot.title = element_text(size = 21, face = "bold", color = "black", hjust = 0.5),
+            legend.title = element_text(size = 14, face = "bold", colour = "black"),
+            legend.text = element_text(size = 14, face = "bold", colour = "black"),
+            legend.position = "bottom") +
+      guides(color = guide_legend(override.aes = list(size = 2)))
     
-    vp
+    print(vp)
     
   })
   
