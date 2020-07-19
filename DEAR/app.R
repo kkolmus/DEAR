@@ -216,7 +216,7 @@ server <- function(input, output, session) {
     clicked <- reactive({
       nearPoints(
         df,
-        input$plot_click,
+        input$plot_click, # something wrong with coordinates
         xvar = "log2FoldChange", 
         yvar = "-log10(p-value)")
     })
