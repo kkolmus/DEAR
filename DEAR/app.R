@@ -2,6 +2,7 @@ library(shiny)
 library(readxl)
 library(dplyr)
 library(tidyr)
+library(tibble)
 library(ggplot2)
 
 # Define UI for data upload app ----
@@ -86,9 +87,11 @@ ui <- fluidPage(
       
       # Output: Tabset w/ plot and table ----
       tabsetPanel(type = "tabs",
-                  tabPanel("Content", tableOutput("contents")),
-                  tabPanel("Volcano Plot", plotOutput("volcano_plot")))
-      
+                  tabPanel("Volcano Plot", 
+                           plotOutput("volcano_plot", click = "plot_click"),
+                           tableOutput("clicked_points")),
+                  tabPanel("Content", 
+                           tableOutput("contents")))
     )
   )
 )
@@ -135,18 +138,18 @@ server <- function(input, output, session) {
     df <- select(df, input$GeneID, input$FoldChange, input$p.value)
     
     # check if there is need to convert fold change data
-    
-    log_name <- paste0('logarithm(', input$FoldChange, ')')
-    
-    checkup <- apply(df[, input$FoldChange], 1, function(row) any(row < 0))
-    is.negative <- length(which(checkup))
-    
-    if (is.negative > 0 ) {
-      df
-    } else {
-      return(df %>% 
-               dplyr::transmute(!!log_name := log2(df[, input$FoldChange])))
-    }
+    # 
+    # log_name <- paste0('logarithm(', input$FoldChange, ')')
+    # 
+    # checkup <- apply(df[, input$FoldChange], 1, function(row) any(row < 0))
+    # is.negative <- length(which(checkup))
+    # 
+    # if (is.negative > 0 ) {
+    #   df
+    # } else {
+    #   return(df %>% 
+    #            dplyr::transmute(!!log_name := log2(df[, input$FoldChange])))
+    # }
     
     df$Threshold <- ifelse(test = df[ ,input$FoldChange] >= input$UP & 
                              df[ ,input$p.value] < input$pval, 
@@ -191,7 +194,7 @@ server <- function(input, output, session) {
       scale_color_manual(values = c("dodgerblue", "gold", "deeppink2")) +
       ggtitle(paste0("Volcano plot showing \n ", input$FoldChange, " and ", input$p.value)) +
       labs(color = "Expression pattern") +
-      xlab("log2FC") +
+      xlab("log2FoldChange") +
       ylab("-log10(p-value)") +
       theme_bw() +
       theme(axis.text = element_text(size = 14, face = "bold", color = "black"),
@@ -203,7 +206,25 @@ server <- function(input, output, session) {
       guides(color = guide_legend(override.aes = list(size = 2)))
     
     print(vp)
+  
+    # retrieve points from the plot
+    new_colnames <- c("Clicked Gene", "log2FoldChange", "-log10(p-value)", "Expression pattern")
+    colnames(df) <- new_colnames
+    df$log2FoldChange <- df$log2FoldChange
+    df$`-log10(p-value)` <- -log10(df$`-log10(p-value)`)
     
+    clicked <- reactive({
+      nearPoints(
+        df,
+        input$plot_click,
+        xvar = "log2FoldChange", 
+        yvar = "-log10(p-value)")
+    })
+    
+    output$clicked_points <- renderTable({
+      clicked()
+    })
+      
   })
   
 }
