@@ -138,7 +138,7 @@ server <- function(input, output, session) {
     
     log_name <- paste0('logarithm(', input$FoldChange, ')')
     
-    checkup <- apply(df, 1, function(row) any(row < 0))
+    checkup <- apply(df[, input$FoldChange], 1, function(row) any(row < 0))
     is.negative <- length(which(checkup))
     
     if (is.negative > 0 ) {
@@ -176,7 +176,6 @@ server <- function(input, output, session) {
     
     df <- select(df, input$GeneID, input$FoldChange, input$p.value)
     
-    # PROBLEM WITH IFELSE CLASSIFICATION
     df$Threshold <- ifelse(test = df[ ,input$FoldChange] >= input$UP & 
                              df[ ,input$p.value] < input$pval, 
                            yes = "Upregulated", 
